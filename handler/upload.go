@@ -3,8 +3,8 @@ package handler
 import (
 	"bytes"
 	"fmt"
-	"image/jpeg"
 	_ "image/gif"
+	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"log"
@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -99,7 +100,7 @@ func UploadHandler(c *gin.Context) {
 		}
 		log.Printf("INFO upload: arquivo original salvo — key=%s size=%d", key, len(data))
 	} else {
-		key = uuid.New().String() + ".jpg"
+		key = uuid.New().String() + ".webp"
 		dest := filepath.Join(storagePath, key)
 		if err2 := os.WriteFile(dest, processed, 0644); err2 != nil {
 			log.Printf("ERROR upload: erro ao salvar imagem processada em %s: %v", dest, err2)
@@ -116,7 +117,7 @@ func UploadHandler(c *gin.Context) {
 }
 
 // processImage decodes any supported format, resizes to max 1200px wide,
-// and re-encodes as JPEG quality 82. Pure Go — no CGO required.
+// and re-encodes as WebP quality 82.
 func processImage(data []byte) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(data), imaging.AutoOrientation(true))
 	if err != nil {
@@ -130,8 +131,8 @@ func processImage(data []byte) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 82}); err != nil {
-		return nil, fmt.Errorf("jpeg encode: %w", err)
+	if err := webp.Encode(&buf, img, &webp.Options{Lossless: false, Quality: 82}); err != nil {
+		return nil, fmt.Errorf("webp encode: %w", err)
 	}
 	return buf.Bytes(), nil
 }
