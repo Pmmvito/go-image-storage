@@ -3,16 +3,15 @@ package handler
 import (
 	"bytes"
 	"fmt"
-	"io"
+	"image/jpeg"
 	_ "image/gif"
-	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,7 +36,7 @@ func Init(path, key, url string, max int64) {
 }
 
 // UploadHandler accepts multipart/form-data (field "file") or raw body,
-// converts image to WebP (max 1200px wide, quality 82), saves and returns URL.
+// resizes to max 1200px wide and re-encodes as JPEG quality 82.
 func UploadHandler(c *gin.Context) {
 	if apiKey != "" && c.GetHeader("X-Api-Key") != apiKey {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid api key"})
@@ -74,24 +73,19 @@ func UploadHandler(c *gin.Context) {
 		return
 	}
 
-	processed, err := toWebP(data)
-	var (
-		key  string
-		dest string
-	)
+	processed, err := processImage(data)
+	var key string
 	if err != nil {
-		// not a recognized image — save original with detected extension
+		// not a recognized image — save original
 		ext := detectExt(data)
 		key = uuid.New().String() + ext
-		dest = filepath.Join(storagePath, key)
-		if err2 := os.WriteFile(dest, data, 0644); err2 != nil {
+		if err2 := os.WriteFile(filepath.Join(storagePath, key), data, 0644); err2 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
 	} else {
-		key = uuid.New().String() + ".webp"
-		dest = filepath.Join(storagePath, key)
-		if err2 := os.WriteFile(dest, processed, 0644); err2 != nil {
+		key = uuid.New().String() + ".jpg"
+		if err2 := os.WriteFile(filepath.Join(storagePath, key), processed, 0644); err2 != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save file"})
 			return
 		}
@@ -101,9 +95,9 @@ func UploadHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"url": url, "key": key})
 }
 
-// toWebP decodes any supported image format, resizes to max 1200px wide
-// (preserving aspect ratio), and encodes as WebP quality 82.
-func toWebP(data []byte) ([]byte, error) {
+// processImage decodes any supported format, resizes to max 1200px wide,
+// and re-encodes as JPEG quality 82. Pure Go — no CGO required.
+func processImage(data []byte) ([]byte, error) {
 	img, err := imaging.Decode(bytes.NewReader(data), imaging.AutoOrientation(true))
 	if err != nil {
 		return nil, err
@@ -114,13 +108,12 @@ func toWebP(data []byte) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
-	if err := webp.Encode(&buf, img, &webp.Options{Quality: 82}); err != nil {
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 82}); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-// detectExt returns file extension from magic bytes.
 func detectExt(data []byte) string {
 	if len(data) >= 4 {
 		switch {
