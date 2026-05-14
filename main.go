@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/Pmmvito/go-image-storage/handler"
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,8 @@ func main() {
 	publicURL := os.Getenv("PUBLIC_URL")
 	if publicURL == "" {
 		publicURL = "http://localhost:8080"
+	} else if !strings.HasPrefix(publicURL, "http://") && !strings.HasPrefix(publicURL, "https://") {
+		publicURL = "https://" + publicURL
 	}
 
 	maxMB := 10
